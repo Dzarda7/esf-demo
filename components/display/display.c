@@ -56,6 +56,7 @@ static void not_ready_screen_init(void)
 
     label_not_ready = lv_label_create(not_ready);
     lv_obj_set_style_text_color(label_not_ready, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_align(label_not_ready, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(label_not_ready);
 
     lvgl_port_unlock();
@@ -89,6 +90,18 @@ static void selector_screen_init(void)
     lv_obj_set_style_arc_color(arc_selector, lv_palette_main(LV_PALETTE_BLUE), LV_PART_INDICATOR);
     lv_obj_set_style_arc_color(arc_selector, lv_color_black(), LV_PART_MAIN);
     lv_obj_set_style_arc_width(arc_selector, 5, LV_PART_INDICATOR);
+
+    lv_obj_t *label_instruction = lv_label_create(selector);
+    lv_obj_set_style_text_color(label_instruction, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_align(label_instruction, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(label_instruction, LV_SYMBOL_RIGHT "\nRotate to select");
+    lv_obj_align(label_instruction, LV_ALIGN_TOP_MID, 0, 10);
+
+    lv_obj_t *label_arrow = lv_label_create(selector);
+    lv_obj_set_style_text_color(label_arrow, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_align(label_arrow, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(label_arrow, "Press\n" LV_SYMBOL_DOWN);
+    lv_obj_align(label_arrow, LV_ALIGN_BOTTOM_MID, 0, -10);
 
     lvgl_port_unlock();
 }
@@ -156,6 +169,12 @@ static void success_screen_init(void)
     label_success = lv_label_create(success);
     lv_obj_set_style_text_color(label_success, lv_color_white(), LV_PART_MAIN);
     lv_obj_align(label_success, LV_ALIGN_TOP_MID, 0, 20);
+
+    lv_obj_t *label_arrow = lv_label_create(success);
+    lv_obj_set_style_text_color(label_arrow, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_align(label_arrow, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(label_arrow, "Press\n" LV_SYMBOL_DOWN);
+    lv_obj_align(label_arrow, LV_ALIGN_BOTTOM_MID, 0, -10);
 
     lvgl_port_unlock();
 }

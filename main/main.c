@@ -62,8 +62,8 @@ static esp_loader_error_t flash_binary(FILE *bin_file, size_t size, size_t addre
     esp_loader_error_t err;
     static uint8_t payload[1024];
 
-    ESP_LOGI(TAG, "Erasing flash");
-    screen_set(FLASHER, "Erasing flash");
+    ESP_LOGI(TAG, "Erasing flash,\nplease wait...");
+    screen_set(FLASHER, "Erasing flash,\nplease wait...");
     err = esp_loader_flash_start(address, size, sizeof(payload));
     if (err != ESP_LOADER_SUCCESS) {
         ESP_LOGI(TAG, "Failed to erase flash");
@@ -285,11 +285,11 @@ static void ui_task(void *pvParameter)
                 break;
             }
         } else if (!state.device_connected && !state.card_mounted) {
-            screen_set(NOT_READY, "No SD card inserted,\nno device connected");
+            screen_set(NOT_READY, "Insert SD card\nand connect a device.");
         } else if (!state.card_mounted) {
-            screen_set(NOT_READY, "No SD card inserted");
+            screen_set(NOT_READY, "Insert SD card");
         } else if (!state.device_connected) {
-            screen_set(NOT_READY, "No device connected");
+            screen_set(NOT_READY, "Check device connection\nor connect a device.");
         }
         vTaskDelay(10 / portTICK_PERIOD_MS);
     }
