@@ -48,6 +48,6 @@ See the [Getting Started Guide](https://docs.espressif.com/projects/esp-idf/en/s
 
 ### Binaries name requirements
 
-The demo shows all the first level directories on the display. Every directory can be selected. The demo then looks for three file names in the directory - bootloader.bin, partition-table.bin, app.bin. These names are mandatory, other files will be ignored.
+The demo shows all the first level directories on the display. Every directory can be selected. The demo then flashes all files with following name convention - "0x12345678_name.bin". The 0x prefix is the address at which the image will be flashed and name is the name that will be visible on the screen during flashing. The prefix and underscore are mandatory as these are checked in the code and underscore is used to separate the address from name.
 
-All these files can be found in build folder of every ESP-IDF project. Arduino IDE also creates these files when building for Espressif SoCs, so projects from it can also be used. USB Mode needs to be changed to Hardware CDC and JTAG in Arduino IDE, otherwise the demo will not be able to start the app after flashing.
+The files can be found in build folder of every ESP-IDF project. Arduino IDE also creates these files when building for Espressif SoCs, so projects from it can also be used. USB Mode needs to be changed to Hardware CDC and JTAG in Arduino IDE, otherwise the demo will not be able to start the app after flashing.

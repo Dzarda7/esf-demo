@@ -2,7 +2,7 @@
 #include <esp_log.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-#include <sys/stat.h>
+#include <dirent.h>
 #include <string.h>
 #include "encoder.h"
 #include "display.h"
@@ -12,17 +12,6 @@
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
-// For esp8266, esp32, esp32s2
-#define BOOTLOADER_ADDRESS_V0       0x1000
-// For esp32s3 and later chips
-#define BOOTLOADER_ADDRESS_V1       0x0
-#define PARTITION_ADDRESS           0x8000
-#define APPLICATION_ADDRESS         0x10000
-
-#define BOOTLOADER_NAME         "bootloader.bin"
-#define APP_NAME                "app.bin"
-#define PARTITION_TABLE_NAME    "partition-table.bin"
-
 #define ESPRESSIF_VID 0x303a
 #define ESP_SERIAL_JTAG_PID 0x1001
 
@@ -30,39 +19,16 @@ static const char *TAG = "ESF_DEMO";
 static TaskHandle_t usbConnectTaskHandle = NULL;
 
 typedef struct {
-    FILE *file;
-    int32_t size;
-    uint32_t address;
-} flasher_image_t;
-
-typedef struct {
     bool device_connected;
     bool card_mounted;
 } device_state_t;
-
-static flasher_image_t flash_file_prepare(const char *path, uint32_t address)
-{
-    flasher_image_t file = {0};
-    struct stat st;
-    if (stat(path, &st) == 0) {
-        file.size = st.st_size;
-        file.address = address;
-        file.file = fopen(path, "rb");
-        if (!file.file) {
-            ESP_LOGE(TAG, "Failed to open file %s", path);
-        }
-    } else {
-        ESP_LOGE(TAG, "Failed to stat file %s", path);
-    }
-    return file;
-}
 
 static esp_loader_error_t flash_binary(FILE *bin_file, size_t size, size_t address, const char *file_name)
 {
     esp_loader_error_t err;
     static uint8_t payload[1024];
 
-    ESP_LOGI(TAG, "Erasing flash,\nplease wait...");
+    ESP_LOGI(TAG, "Erasing flash, please wait...");
     screen_set(FLASHER, "Erasing flash,\nplease wait...");
     err = esp_loader_flash_start(address, size, sizeof(payload));
     if (err != ESP_LOADER_SUCCESS) {
@@ -70,9 +36,21 @@ static esp_loader_error_t flash_binary(FILE *bin_file, size_t size, size_t addre
         return err;
     }
 
+    // Extract name from file which might look like "0x12345678_name.bin"
+    char *name_start = strchr(file_name, '_');
+    char name[32] = {0};
+    if (name_start) {
+        for (int i = 1; i < 32; i++) {
+            if (name_start[i] == '.') {
+                break;
+            }
+            name[i - 1] = name_start[i];
+        }
+    }
+
     char text[64];
-    snprintf(text, sizeof(text), "Flashing...\n %s", file_name);
-    ESP_LOGI(TAG, "Flashing %s", file_name);
+    snprintf(text, sizeof(text), "Flashing...\n %s", name);
+    ESP_LOGI(TAG, "Flashing %s", name);
     screen_set(FLASHER, text);
     size_t written = 0;
     while (written < size) {
@@ -98,72 +76,96 @@ static esp_loader_error_t flash_binary(FILE *bin_file, size_t size, size_t addre
 static esp_loader_error_t flash_process(const char *proj_name)
 {
     esp_loader_connect_args_t connect_config = ESP_LOADER_CONNECT_DEFAULT();
-    if (esp_loader_connect(&connect_config) == ESP_LOADER_SUCCESS) {
-        esp_loader_error_t err;
-        uint16_t path_len;
-        flasher_image_t image;
-        char *path;
-
-        path_len = strlen(MOUNT_POINT) + strlen(proj_name) + strlen(BOOTLOADER_NAME) + 2 + 1; // +2 for slashes, +1 for null terminator
-        path = (char *)malloc(path_len);
-        snprintf(path, path_len, "%s/%s/%s", MOUNT_POINT, proj_name, BOOTLOADER_NAME);
-        image = flash_file_prepare(path, BOOTLOADER_ADDRESS_V1);
-        if (image.file == NULL) {
-            free(path);
-            return ESP_LOADER_ERROR_FAIL;
-        }
-        err = flash_binary(image.file, image.size, image.address, BOOTLOADER_NAME);
-        fclose(image.file);
-        if (err != ESP_LOADER_SUCCESS) {
-            if (path != NULL) {
-                free(path);
-            }
-            return err;
-        }
-        vTaskDelay(100 / portTICK_PERIOD_MS);
-
-        path_len = strlen(MOUNT_POINT) + strlen(proj_name) + strlen(PARTITION_TABLE_NAME) + 2 + 1; // +2 for slashes, +1 for null terminator
-        path = (char *)realloc(path, path_len);
-        snprintf(path, path_len, "%s/%s/%s", MOUNT_POINT, proj_name, PARTITION_TABLE_NAME);
-        image = flash_file_prepare(path, PARTITION_ADDRESS);
-        if (image.file == NULL) {
-            free(path);
-            return ESP_LOADER_ERROR_FAIL;
-        }
-        err = flash_binary(image.file, image.size, image.address, PARTITION_TABLE_NAME);
-        fclose(image.file);
-        if (err != ESP_LOADER_SUCCESS) {
-            if (path != NULL) {
-                free(path);
-            }
-            return err;
-        }
-        vTaskDelay(100 / portTICK_PERIOD_MS);
-
-        path_len = strlen(MOUNT_POINT) + strlen(proj_name) + strlen(APP_NAME) + 2 + 1; // +2 for slashes, +1 for null terminator
-        path = (char *)realloc(path, path_len);
-        snprintf(path, path_len, "%s/%s/%s", MOUNT_POINT, proj_name, APP_NAME);
-        image = flash_file_prepare(path, APPLICATION_ADDRESS);
-        if (image.file == NULL) {
-            free(path);
-            return ESP_LOADER_ERROR_FAIL;
-        }
-        err = flash_binary(image.file, image.size, image.address, APP_NAME);
-        fclose(image.file);
-        if (err != ESP_LOADER_SUCCESS) {
-            if (path != NULL) {
-                free(path);
-            }
-            return err;
-        }
-        free(path);
-        esp_loader_reset_target();
-        return ESP_LOADER_SUCCESS;
-    }
-    else {
+    if (esp_loader_connect(&connect_config) != ESP_LOADER_SUCCESS) {
         ESP_LOGE(TAG, "Failed to connect to the device");
+        return ESP_LOADER_ERROR_FAIL;
     }
-    return ESP_LOADER_ERROR_FAIL;
+    
+    esp_loader_error_t err = ESP_LOADER_SUCCESS;
+
+    uint8_t dir_path_len = strlen(MOUNT_POINT) + 1 + strlen(proj_name) + 1; // +1 for '/' and +1 for null terminator
+    char full_dir_path[dir_path_len];
+    snprintf(full_dir_path, sizeof(full_dir_path), "%s/%s", MOUNT_POINT, proj_name);
+    
+    DIR *dir = opendir(full_dir_path);
+    if (!dir) {
+        ESP_LOGE(TAG, "Failed to open directory %s", full_dir_path);
+        return ESP_LOADER_ERROR_FAIL;
+    }
+    
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        // Skip directories
+        if (entry->d_type == DT_DIR) {
+            continue;
+        }
+        
+        const char *filename = entry->d_name;
+        
+        // Check if filename starts with "0x" to determine if it has an address prefix
+        if (strncmp(filename, "0x", 2) != 0) {
+            ESP_LOGW(TAG, "Skipping file %s (no address prefix)", filename);
+            continue;
+        }
+        
+        // Find the first underscore
+        char *underscore_pos = strchr(filename, '_');
+        if (!underscore_pos) {
+            ESP_LOGW(TAG, "Skipping file %s (no underscore delimiter)", filename);
+            continue;
+        }
+        
+        // Extract address part
+        size_t addr_len = underscore_pos - filename;
+        char addr_str[16] = {0};
+        strncpy(addr_str, filename, MIN(addr_len, sizeof(addr_str) - 1));
+        
+        // Convert hex string to uint32_t
+        uint32_t address = 0;
+        if (sscanf(addr_str, "%"PRIx32, &address) != 1) {
+            ESP_LOGW(TAG, "Failed to parse address from %s", filename);
+            continue;
+        }
+        
+        size_t path_len = strlen(full_dir_path) + 1 + strlen(filename) + 1;
+        char *path_buffer = calloc(path_len, sizeof(char));
+        if (!path_buffer) {
+            ESP_LOGE(TAG, "Failed to allocate memory for path");
+            break;
+        }
+        snprintf(path_buffer, path_len, "%s/%s", full_dir_path, filename);
+        
+        FILE *file = fopen(path_buffer, "rb");
+        free(path_buffer);
+
+        if (file == NULL) {
+            ESP_LOGW(TAG, "Failed to open file %s", filename);
+            continue;
+        }
+
+        // Get file size
+        fseek(file, 0, SEEK_END);
+        size_t file_size = ftell(file);
+        fseek(file, 0, SEEK_SET);  // Reset file position for reading
+
+        ESP_LOGI(TAG, "Flashing %s to address 0x%"PRIx32"", filename, address);
+        err = flash_binary(file, file_size, address, filename);
+        fclose(file);
+        
+        if (err != ESP_LOADER_SUCCESS) {
+            ESP_LOGE(TAG, "Failed to flash %s", filename);
+            break;
+        }
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+    }
+    
+    closedir(dir);
+    
+    if (err == ESP_LOADER_SUCCESS) {
+        esp_loader_reset_target();
+    }
+    
+    return err;
 }
 
 static void usb_lib_task(void *arg)
@@ -240,8 +242,9 @@ static device_state_t check_device_state(void)
         state.device_connected = true;
     }
 
-    struct stat st;
-    if (stat(MOUNT_POINT, &st) == 0) {
+    DIR *dir = opendir(MOUNT_POINT);
+    if (dir != NULL) {
+        closedir(dir);
         state.card_mounted = true;
     }
     return state;
