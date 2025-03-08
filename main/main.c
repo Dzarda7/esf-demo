@@ -318,6 +318,17 @@ static void card_mount_task(void *arg)
     }
 }
 
+
+// Temporary workaround that resets USB peripheral after an hour, because it stops working after a while
+// This issue is also present in esp-serial-flasher
+void reset_mcu() {
+    esp_restart();
+}
+
+void hourly_reset_callback(TimerHandle_t xTimer) {
+    reset_mcu();
+}
+
 void app_main(void)
 {
     display_config_t display_config = {
@@ -349,4 +360,8 @@ void app_main(void)
     xTaskCreate(card_mount_task, "card_mount", 4096, NULL, 3, NULL);
     xTaskCreatePinnedToCore(usb_connect_task, "usb_connect", 4096, NULL, 1, &usbConnectTaskHandle, 1);
     xTaskCreatePinnedToCore(ui_task, "ui_task", 4096, NULL, 5, NULL, 0);
+
+    // Create timer with 1,5 hour period that resets mcu - temporary workaround
+    TimerHandle_t usb_timer = xTimerCreate("USBReset", pdMS_TO_TICKS(5400000), pdTRUE, NULL, hourly_reset_callback);
+    xTimerStart(usb_timer, 0);
 }
