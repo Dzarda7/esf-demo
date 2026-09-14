@@ -12,11 +12,13 @@
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
-#define ESPRESSIF_VID 0x303a
-#define ESP_SERIAL_JTAG_PID 0x1001
+// ESPRESSIF_VID and ESP_SERIAL_JTAG_PID come from esp32_usb_cdc_acm_port.h
 
 static const char *TAG = "ESF_DEMO";
 static TaskHandle_t usbConnectTaskHandle = NULL;
+
+static esp_loader_t loader;
+static esp32_usb_cdc_acm_port_t loader_port;
 
 typedef struct {
     bool device_connected;
@@ -28,9 +30,15 @@ static esp_loader_error_t flash_binary(FILE *bin_file, size_t size, size_t addre
     esp_loader_error_t err;
     static uint8_t payload[1024];
 
+    esp_loader_flash_cfg_t flash_cfg = {
+        .offset = address,
+        .image_size = size,
+        .block_size = sizeof(payload),
+    };
+
     ESP_LOGI(TAG, "Erasing flash, please wait...");
     screen_set(FLASHER, "Erasing flash,\nplease wait...");
-    err = esp_loader_flash_start(address, size, sizeof(payload));
+    err = esp_loader_flash_start(&loader, &flash_cfg);
     if (err != ESP_LOADER_SUCCESS) {
         ESP_LOGI(TAG, "Failed to erase flash");
         return err;
@@ -55,7 +63,7 @@ static esp_loader_error_t flash_binary(FILE *bin_file, size_t size, size_t addre
     size_t written = 0;
     while (written < size) {
         size_t read_bytes = fread(payload, sizeof(uint8_t), sizeof(payload), bin_file);
-        err = esp_loader_flash_write(payload, read_bytes);
+        err = esp_loader_flash_write(&loader, &flash_cfg, payload, read_bytes);
         if (err != ESP_LOADER_SUCCESS) {
             return err;
         }
@@ -66,7 +74,8 @@ static esp_loader_error_t flash_binary(FILE *bin_file, size_t size, size_t addre
         flasher_screen_progress(progress);
         vTaskDelay(1 / portTICK_PERIOD_MS); // Yield to watchdog reset
     };
-    err = esp_loader_flash_verify();
+    // Finalizes the flash operation and verifies the written data using MD5
+    err = esp_loader_flash_finish(&loader, &flash_cfg);
     if (err != ESP_LOADER_SUCCESS) {
         return err;
     }
@@ -76,7 +85,7 @@ static esp_loader_error_t flash_binary(FILE *bin_file, size_t size, size_t addre
 static esp_loader_error_t flash_process(const char *proj_name)
 {
     esp_loader_connect_args_t connect_config = ESP_LOADER_CONNECT_DEFAULT();
-    if (esp_loader_connect(&connect_config) != ESP_LOADER_SUCCESS) {
+    if (esp_loader_connect(&loader, &connect_config) != ESP_LOADER_SUCCESS) {
         ESP_LOGE(TAG, "Failed to connect to the device");
         return ESP_LOADER_ERROR_FAIL;
     }
@@ -162,7 +171,7 @@ static esp_loader_error_t flash_process(const char *proj_name)
     closedir(dir);
     
     if (err == ESP_LOADER_SUCCESS) {
-        esp_loader_reset_target();
+        esp_loader_reset_target(&loader);
     }
     
     return err;
@@ -219,7 +228,12 @@ static void usb_connect_task(void *arg)
     ESP_ERROR_CHECK(cdc_acm_host_install(&cdc_acm_driver_config));
 
     while (1) {
-        const loader_esp32_usb_cdc_acm_config_t config = {
+        // The port releases the device and clears its callbacks on disconnect,
+        // so the whole configuration has to be filled in before every attempt.
+        // The delay gives the port time to finish its own cleanup after a disconnect.
+        vTaskDelay(100 / portTICK_PERIOD_MS);
+        loader_port = (esp32_usb_cdc_acm_port_t) {
+            .port.ops = &esp32_usb_cdc_acm_ops,
             .device_vid = ESPRESSIF_VID,
             .device_pid = ESP_SERIAL_JTAG_PID,
             .connection_timeout_ms = 1000,
@@ -227,8 +241,10 @@ static void usb_connect_task(void *arg)
             .device_disconnected_callback = device_disconnected_callback,
         };
 
-        ESP_LOGI(TAG, "Opening CDC ACM device 0x%04X:0x%04X...", config.device_vid, config.device_pid);
-        if (loader_port_esp32_usb_cdc_acm_init(&config) != ESP_LOADER_SUCCESS) {
+        ESP_LOGI(TAG, "Opening CDC ACM device 0x%04X:0x%04X...",
+                 loader_port.device_vid, loader_port.device_pid);
+        // Opens the USB device and binds the port to the loader context
+        if (esp_loader_init_serial(&loader, &loader_port.port) != ESP_LOADER_SUCCESS) {
             continue;
         }
         vTaskSuspend(NULL);
@@ -321,17 +337,6 @@ static void card_mount_task(void *arg)
     }
 }
 
-
-// Temporary workaround that resets USB peripheral after an hour, because it stops working after a while
-// This issue is also present in esp-serial-flasher
-void reset_mcu() {
-    esp_restart();
-}
-
-void hourly_reset_callback(TimerHandle_t xTimer) {
-    reset_mcu();
-}
-
 void app_main(void)
 {
     display_config_t display_config = {
@@ -363,8 +368,4 @@ void app_main(void)
     xTaskCreate(card_mount_task, "card_mount", 4096, NULL, 3, NULL);
     xTaskCreatePinnedToCore(usb_connect_task, "usb_connect", 4096, NULL, 1, &usbConnectTaskHandle, 1);
     xTaskCreatePinnedToCore(ui_task, "ui_task", 4096, NULL, 5, NULL, 0);
-
-    // Create timer with 1,5 hour period that resets mcu - temporary workaround
-    TimerHandle_t usb_timer = xTimerCreate("USBReset", pdMS_TO_TICKS(5400000), pdTRUE, NULL, hourly_reset_callback);
-    xTimerStart(usb_timer, 0);
 }
