@@ -83,7 +83,9 @@ static esp_loader_error_t flash_binary(FILE *bin_file, size_t size, size_t addre
 static esp_loader_error_t flash_process(const char *proj_name)
 {
     esp_loader_connect_args_t connect_config = ESP_LOADER_CONNECT_DEFAULT();
-    if (esp_loader_connect(&loader, &connect_config) != ESP_LOADER_SUCCESS) {
+    // The stub is considerably faster than the ROM bootloader and lifts the
+    // 2 MB limit on the target flash size
+    if (esp_loader_connect_with_stub(&loader, &connect_config) != ESP_LOADER_SUCCESS) {
         ESP_LOGE(TAG, "Failed to connect to the device");
         return ESP_LOADER_ERROR_FAIL;
     }
