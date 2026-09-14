@@ -114,6 +114,15 @@ static esp_loader_error_t flash_process(const char *proj_name)
     const char *target_name = target_chip_name(esp_loader_get_target(&loader));
     ESP_LOGI(TAG, "Connected to %s", target_name);
 
+    // Detecting the size lets an oversized image fail before anything is
+    // written instead of somewhere in the middle of the progress bar
+    uint32_t flash_size = 0;
+    if (esp_loader_flash_detect_size(&loader, &flash_size) != ESP_LOADER_SUCCESS) {
+        ESP_LOGW(TAG, "Could not detect the target flash size, skipping the bounds check");
+    } else {
+        ESP_LOGI(TAG, "Target flash size is %"PRIu32" kB", flash_size / 1024);
+    }
+
     esp_loader_error_t err = ESP_LOADER_SUCCESS;
 
     uint8_t dir_path_len = strlen(MOUNT_POINT) + 1 + strlen(proj_name) + 1; // +1 for '/' and +1 for null terminator
@@ -180,6 +189,13 @@ static esp_loader_error_t flash_process(const char *proj_name)
         fseek(file, 0, SEEK_END);
         size_t file_size = ftell(file);
         fseek(file, 0, SEEK_SET);  // Reset file position for reading
+
+        if (flash_size != 0 && address + file_size > flash_size) {
+            ESP_LOGE(TAG, "%s does not fit into the target flash", filename);
+            err = ESP_LOADER_ERROR_INVALID_PARAM;
+            fclose(file);
+            break;
+        }
 
         ESP_LOGI(TAG, "Flashing %s to address 0x%"PRIx32"", filename, address);
         err = flash_binary(file, file_size, address, filename, target_name);
