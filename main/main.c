@@ -23,7 +23,26 @@ typedef struct {
     bool card_mounted;
 } device_state_t;
 
-static esp_loader_error_t flash_binary(FILE *bin_file, size_t size, size_t address, const char *file_name)
+static const char *target_chip_name(target_chip_t chip)
+{
+    switch (chip) {
+    case ESP8266_CHIP:  return "ESP8266";
+    case ESP32_CHIP:    return "ESP32";
+    case ESP32S2_CHIP:  return "ESP32-S2";
+    case ESP32C3_CHIP:  return "ESP32-C3";
+    case ESP32S3_CHIP:  return "ESP32-S3";
+    case ESP32C2_CHIP:  return "ESP32-C2";
+    case ESP32C5_CHIP:  return "ESP32-C5";
+    case ESP32H2_CHIP:  return "ESP32-H2";
+    case ESP32C6_CHIP:  return "ESP32-C6";
+    case ESP32P4_CHIP:  return "ESP32-P4";
+    case ESP32C61_CHIP: return "ESP32-C61";
+    default:            return "Unknown target";
+    }
+}
+
+static esp_loader_error_t flash_binary(FILE *bin_file, size_t size, size_t address, const char *file_name,
+                                       const char *target_name)
 {
     esp_loader_error_t err;
     static uint8_t payload[1024];
@@ -34,8 +53,10 @@ static esp_loader_error_t flash_binary(FILE *bin_file, size_t size, size_t addre
         .block_size = sizeof(payload),
     };
 
+    char erase_text[64];
+    snprintf(erase_text, sizeof(erase_text), "%s\nErasing flash,\nplease wait...", target_name);
     ESP_LOGI(TAG, "Erasing flash, please wait...");
-    screen_set(FLASHER, "Erasing flash,\nplease wait...");
+    screen_set(FLASHER, erase_text);
     err = esp_loader_flash_start(&loader, &flash_cfg);
     if (err != ESP_LOADER_SUCCESS) {
         ESP_LOGI(TAG, "Failed to erase flash");
@@ -90,6 +111,9 @@ static esp_loader_error_t flash_process(const char *proj_name)
         return ESP_LOADER_ERROR_FAIL;
     }
     
+    const char *target_name = target_chip_name(esp_loader_get_target(&loader));
+    ESP_LOGI(TAG, "Connected to %s", target_name);
+
     esp_loader_error_t err = ESP_LOADER_SUCCESS;
 
     uint8_t dir_path_len = strlen(MOUNT_POINT) + 1 + strlen(proj_name) + 1; // +1 for '/' and +1 for null terminator
@@ -158,7 +182,7 @@ static esp_loader_error_t flash_process(const char *proj_name)
         fseek(file, 0, SEEK_SET);  // Reset file position for reading
 
         ESP_LOGI(TAG, "Flashing %s to address 0x%"PRIx32"", filename, address);
-        err = flash_binary(file, file_size, address, filename);
+        err = flash_binary(file, file_size, address, filename, target_name);
         fclose(file);
         
         if (err != ESP_LOADER_SUCCESS) {
