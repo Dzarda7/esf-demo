@@ -3,6 +3,7 @@
 #include "esp_log.h"
 #include "driver/pulse_cnt.h"
 #include "iot_button.h"
+#include "button_gpio.h"
 #include "freertos/queue.h"
 
 #define PCNT_HIGH_LIMIT 4
@@ -78,22 +79,22 @@ static void button_single_click_cb(void *arg, void *usr_data)
 
 static esp_err_t button_init(uint32_t encoder_btn_pin)
 {
-    button_config_t btn_config = {
-        .type = BUTTON_TYPE_GPIO,
+    const button_config_t btn_config = {
         .short_press_time = 50,
-        .gpio_button_config = {
-            .gpio_num = encoder_btn_pin,
-            .active_level = 0,
-        },
     };
-    button_handle_t btn_handle = iot_button_create(&btn_config);
-    if (btn_handle == NULL) {
+    const button_gpio_config_t btn_gpio_config = {
+        .gpio_num = encoder_btn_pin,
+        .active_level = 0,
+    };
+    button_handle_t btn_handle = NULL;
+    esp_err_t err = iot_button_new_gpio_device(&btn_config, &btn_gpio_config, &btn_handle);
+    if (err != ESP_OK) {
         ESP_LOGE(TAG, "create button failed");
-        return ESP_FAIL;
+        return err;
     }
     ESP_LOGI(TAG, "create button success");
 
-    ESP_ERROR_CHECK(iot_button_register_cb(btn_handle, BUTTON_SINGLE_CLICK, button_single_click_cb, NULL));
+    ESP_ERROR_CHECK(iot_button_register_cb(btn_handle, BUTTON_SINGLE_CLICK, NULL, button_single_click_cb, NULL));
     return ESP_OK;
 }
 

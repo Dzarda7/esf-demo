@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include <esp_log.h>
+#include "esp_idf_version.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_vendor.h"
 #include "esp_lcd_panel_ops.h"
@@ -223,7 +226,11 @@ static void panel_init(display_config_t *display_config, esp_lcd_panel_io_handle
 
     const esp_lcd_panel_dev_config_t panel_config = {
         .reset_gpio_num = display_config->pin_num_rst,
-        .rgb_endian = ESP_LCD_COLOR_SPACE_BGR,
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(6, 0, 0)
+        .rgb_endian = LCD_RGB_ENDIAN_BGR,
+#else
+        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,
+#endif
         .bits_per_pixel = 16,
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi(display_config->host, &io_config, io_handle));
