@@ -1,6 +1,6 @@
 # ESP-Serial-Flasher Demo
 
-The goal of this demo is to show a possible use case of [esp-serial-flasher](https://github.com/espressif/esp-serial-flasher) library which is used for flashing Espressif SoCs from other host microcontrollers. [M5stack Dial](https://docs.m5stack.com/en/core/M5Dial) devkit is used which enables easy binary selection for the target and shows the progress of flashing. This demo also uses an SD card as a binary carrier for targets. Flashing utilizes a USB CDC ACM interface, so only some of the Espressif SoCs can be used for now.
+The goal of this demo is to show a possible use case of [esp-serial-flasher](https://github.com/espressif/esp-serial-flasher) library which is used for flashing Espressif SoCs from other host microcontrollers. [M5stack Dial](https://docs.m5stack.com/en/core/M5Dial) devkit is used which enables easy binary selection for the target and shows the progress of flashing. This demo also uses an SD card as a binary carrier for targets. Flashing utilizes a USB CDC ACM interface, so only some of the Espressif SoCs can be used for now. Targets connected over USB-Serial-JTAG, native USB (OTG) or a CP210x / CH34x USB-to-UART converter are all supported, and the right one is detected automatically.
 
 ![ESF Demo](images/esf-demo.gif)
 

@@ -12,8 +12,6 @@
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
-// ESPRESSIF_VID and ESP_SERIAL_JTAG_PID come from esp32_usb_cdc_acm_port.h
-
 static const char *TAG = "ESF_DEMO";
 static TaskHandle_t usbConnectTaskHandle = NULL;
 
@@ -234,15 +232,16 @@ static void usb_connect_task(void *arg)
         vTaskDelay(100 / portTICK_PERIOD_MS);
         loader_port = (esp32_usb_cdc_acm_port_t) {
             .port.ops = &esp32_usb_cdc_acm_ops,
-            .device_vid = ESPRESSIF_VID,
-            .device_pid = ESP_SERIAL_JTAG_PID,
+            // Probes USB-Serial-JTAG, native USB CDC and the supported
+            // CP210x / CH34x converters in turn
+            .device_vid = USB_VID_PID_AUTO_DETECT,
+            .device_pid = USB_VID_PID_AUTO_DETECT,
             .connection_timeout_ms = 1000,
             .out_buffer_size = 4096,
             .device_disconnected_callback = device_disconnected_callback,
         };
 
-        ESP_LOGI(TAG, "Opening CDC ACM device 0x%04X:0x%04X...",
-                 loader_port.device_vid, loader_port.device_pid);
+        ESP_LOGI(TAG, "Opening CDC ACM device...");
         // Opens the USB device and binds the port to the loader context
         if (esp_loader_init_serial(&loader, &loader_port.port) != ESP_LOADER_SUCCESS) {
             continue;
